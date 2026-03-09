@@ -32,14 +32,20 @@ io.on('connection', (socket) => {
     socket.join(userId);
     console.log(`Utente ${userId} è entrato nella sua stanza.`);
   });
-
+socket.on('bridge-status', (data) => {
+    if (data.userId) {
+      // Avvisa il browser che il bridge è online e sta leggendo un file
+      io.to(data.userId).emit('bridge-status', data);
+    }
+  });
   // Riceve il codice dal Bridge locale (PC dell'utente)
-  socket.on('code-from-sublime', (data) => {
-    // data deve essere { userId: "...", code: "..." }
+socket.on('code-from-sublime', (data) => {
     if (data.userId && data.code !== undefined) {
-      // Invia il codice solo agli altri dispositivi nella stanza dell'utente
-      socket.to(data.userId).emit('code-update', data.code);
-      console.log(`Codice aggiornato per l'utente: ${data.userId}`);
+      // USIAMO io.to invece di socket.to
+      // Questo invia a TUTTI quelli nella stanza, incluso il browser
+      io.to(data.userId).emit('code-update', data.code);
+      
+      console.log(`⚡ Sincronizzazione riuscita per: ${data.userId}`);
     }
   });
 
