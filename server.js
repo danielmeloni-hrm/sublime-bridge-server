@@ -10,7 +10,7 @@ const io = require('socket.io')(http, {
 // TRUCCO PER NON FAR DORMIRE IL SERVER
 const axios = require('axios'); // Installa con: npm install axios
 
-const URL_DEL_TUO_SERVER = "https://il-tuo-bridge.onrender.com"; 
+const URL_DEL_TUO_SERVER = "https://sublime-bridge-server.onrender.com"; 
 
 setInterval(() => {
   axios.get(URL_DEL_TUO_SERVER)
