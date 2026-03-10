@@ -40,7 +40,7 @@ socket.on('bridge-status', (data) => {
   });
 
   socket.on('open-external-file', (data) => {
-    // Invia il comando a tutti nella stanza (quindi al Bridge)
+    // Inoltra il comando al bridge nella stessa stanza dell'utente
     io.to(data.userId).emit('open-file-locally', { fullPath: data.fullPath });
 });
   // Riceve il codice dal Bridge locale (PC dell'utente)
