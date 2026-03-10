@@ -1,49 +1,64 @@
-const express = require('express');
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const cors = require("cors");
+
 const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
+app.use(cors());
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("Server Bridge Attivo");
+});
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
   cors: {
-    origin: "*", 
-    methods: ["GET", "POST"]
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
+app.post("/update-code", (req, res) => {
+  try {
+    const { filePath, code } = req.body;
+
+    if (!filePath || typeof code !== "string") {
+      return res.status(400).json({
+        ok: false,
+        error: "filePath e code sono obbligatori",
+      });
+    }
+
+    io.emit("code-update", {
+      filePath,
+      code,
+    });
+
+    return res.json({
+      ok: true,
+      filePath,
+    });
+  } catch (error) {
+    console.error("Errore /update-code:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Errore interno server",
+    });
   }
 });
-const axios = require('axios');
 
-// AUTO-PING (Tienilo, è utile per Render Free)
-const URL_DEL_TUO_SERVER = "https://sublime-bridge-server.onrender.com"; 
-setInterval(() => {
-  axios.get(URL_DEL_TUO_SERVER).catch(() => {});
-}, 600000);
+io.on("connection", (socket) => {
+  console.log("Client connesso:", socket.id);
 
-app.get('/', (req, res) => res.send('Server Bridge Attivo 🚀'));
-
-io.on('connection', (socket) => {
-  console.log('Nuova connessione');
-
-  socket.on('join-room', (userId) => {
-    socket.join(userId);
-    console.log(`Stanza: ${userId}`);
+  socket.on("disconnect", (reason) => {
+    console.log("Client disconnesso:", socket.id, reason);
   });
-
-  // 1. RICEVE DAL SITO -> INVIA AL BRIDGE
-  // Il sito emette 'open-external-file'
-  socket.on('open-external-file', (data) => {
-    console.log(`Richiesta apertura per ${data.userId}: ${data.fullPath}`);
-    // Il bridge sta ascoltando 'open-external-file', quindi usiamo lo stesso nome
-    io.to(data.userId).emit('open-external-file', { fullPath: data.fullPath });
-  });
-
-  // 2. RICEVE DAL BRIDGE -> INVIA AL SITO (CODICE E PATH)
-  socket.on('code-from-sublime', (data) => {
-    if (data.userId) {
-      // Inoltriamo l'intero oggetto (code, fileName, fullPath)
-      io.to(data.userId).emit('code-update', data);
-      console.log(`⚡ Sincro: ${data.fileName} per ${data.userId}`);
-    }
-  });
-
-  socket.on('disconnect', () => console.log('Client disconnesso'));
 });
 
-const PORT = process.env.PORT || 10000;
-http.listen(PORT, () => console.log(`Server su porta ${PORT}`));
+const PORT = process.env.PORT || 4000;
+
+server.listen(PORT, () => {
+  console.log(`Bridge server attivo sulla porta ${PORT}`);
+});
