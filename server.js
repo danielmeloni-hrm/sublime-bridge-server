@@ -38,6 +38,11 @@ socket.on('bridge-status', (data) => {
       io.to(data.userId).emit('bridge-status', data);
     }
   });
+
+  socket.on('open-external-file', (data) => {
+    // Invia il comando a tutti nella stanza (quindi al Bridge)
+    io.to(data.userId).emit('open-file-locally', { fullPath: data.fullPath });
+});
   // Riceve il codice dal Bridge locale (PC dell'utente)
 socket.on('code-from-sublime', (data) => {
     if (data.userId && data.code !== undefined) {
