@@ -21,39 +21,27 @@ const io = new Server(server, {
 });
 
 app.post("/update-code", (req, res) => {
-  try {
-    const { filePath, code } = req.body;
+  const { filePath, code, userId } = req.body; // Riceve anche l'ID
 
-    if (!filePath || typeof code !== "string") {
-      return res.status(400).json({
-        ok: false,
-        error: "filePath e code sono obbligatori",
-      });
-    }
+  const payload = {
+    fileName: require("path").basename(filePath),
+    fullPath: filePath,
+    code,
+  };
 
-    io.emit("code-update", {
-      filePath,
-      code,
-    });
-
-    return res.json({
-      ok: true,
-      filePath,
-    });
-  } catch (error) {
-    console.error("Errore /update-code:", error);
-    return res.status(500).json({
-      ok: false,
-      error: "Errore interno server",
-    });
+  if (userId) {
+    // Invia il file solo alla "stanza" dell'utente specifico
+    io.to(userId).emit("code-update", payload);
+  } else {
+    io.emit("code-update", payload);
   }
+
+  res.json({ ok: true });
 });
 
 io.on("connection", (socket) => {
-  console.log("Client connesso:", socket.id);
-
-  socket.on("disconnect", (reason) => {
-    console.log("Client disconnesso:", socket.id, reason);
+  socket.on("join-room", (userId) => {
+    socket.join(userId); // Il browser entra nella sua stanza privata
   });
 });
 
