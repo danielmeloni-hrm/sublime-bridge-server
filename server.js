@@ -54,25 +54,49 @@ function openTerminalAt(targetPath) {
   const platform = process.platform;
 
   if (platform === "win32") {
-    spawn("cmd.exe", ["/c", "start", "cmd.exe", "/k", `cd /d "${targetPath}"`], {
-      detached: true,
-      stdio: "ignore",
-    }).unref();
+    spawn(
+      "cmd.exe",
+      [
+        "/c",
+        "start",
+        "cmd.exe",
+        "/k",
+        `cd /d "${targetPath}" && node .\\watcher.js`,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+      }
+    ).unref();
     return;
   }
 
   if (platform === "darwin") {
-    spawn("open", ["-a", "Terminal", targetPath], {
-      detached: true,
-      stdio: "ignore",
-    }).unref();
+    spawn(
+      "osascript",
+      [
+        "-e",
+        `tell application "Terminal" to do script "cd '${targetPath.replace(/'/g, "'\\''")}' && node ./watcher.js"`,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+      }
+    ).unref();
     return;
   }
 
-  spawn("x-terminal-emulator", ["--working-directory", targetPath], {
-    detached: true,
-    stdio: "ignore",
-  }).unref();
+  spawn(
+    "x-terminal-emulator",
+    [
+      "-e",
+      `bash -lc 'cd "${targetPath}" && node ./watcher.js; exec bash'`,
+    ],
+    {
+      detached: true,
+      stdio: "ignore",
+    }
+  ).unref();
 }
 
 app.post("/update-code", (req, res) => {
@@ -99,43 +123,53 @@ io.on("connection", (socket) => {
   });
 
   socket.on("open-terminal", (payload = {}) => {
-    try {
-      const folderName = payload.targetFolderName || "live_notes";
+  try {
+    const folderName = payload.targetFolderName || "live_notes";
 
-      const searchRoots = [
-        process.cwd(),
-        path.join(process.cwd(), ".."),
-        process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Desktop") : null,
-        process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Documents") : null,
-        process.env.HOME ? path.join(process.env.HOME, "Desktop") : null,
-        process.env.HOME ? path.join(process.env.HOME, "Documents") : null,
-      ].filter(Boolean);
+    const searchRoots = [
+      process.cwd(),
+      path.join(process.cwd(), ".."),
+      process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Desktop") : null,
+      process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Documents") : null,
+      process.env.HOME ? path.join(process.env.HOME, "Desktop") : null,
+      process.env.HOME ? path.join(process.env.HOME, "Documents") : null,
+    ].filter(Boolean);
 
-      let foundPath = null;
+    let foundPath = null;
 
-      for (const root of searchRoots) {
-        foundPath = findFolderRecursive(root, folderName, 6);
-        if (foundPath) break;
-      }
-
-      if (!foundPath) {
-        socket.emit("terminal-error", {
-          message: `Cartella "${folderName}" non trovata`,
-        });
-        return;
-      }
-
-      openTerminalAt(foundPath);
-
-      socket.emit("terminal-opened", {
-        path: foundPath,
-      });
-    } catch (error) {
-      socket.emit("terminal-error", {
-        message: error?.message || "Errore apertura terminale",
-      });
+    for (const root of searchRoots) {
+      foundPath = findFolderRecursive(root, folderName, 6);
+      if (foundPath) break;
     }
-  });
+
+    if (!foundPath) {
+      socket.emit("terminal-error", {
+        message: `Cartella "${folderName}" non trovata`,
+      });
+      return;
+    }
+
+    const watcherPath = path.join(foundPath, "watcher.js");
+
+    if (!fs.existsSync(watcherPath)) {
+      socket.emit("terminal-error", {
+        message: `watcher.js non trovato in ${foundPath}`,
+      });
+      return;
+    }
+
+    openTerminalAt(foundPath);
+
+    socket.emit("terminal-opened", {
+      path: foundPath,
+      command: "node .\\watcher.js",
+    });
+  } catch (error) {
+    socket.emit("terminal-error", {
+      message: error?.message || "Errore apertura terminale",
+    });
+  }
+});
 });
 
 const PORT = process.env.PORT || 4000;
