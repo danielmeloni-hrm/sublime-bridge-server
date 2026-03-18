@@ -2,6 +2,9 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
+const path = require("path");
+const fs = require("fs");
+const { spawn } = require("child_process");
 
 const app = express();
 app.use(cors());
@@ -20,17 +23,68 @@ const io = new Server(server, {
   },
 });
 
+function findFolderRecursive(startDir, folderName, maxDepth = 6, currentDepth = 0) {
+  if (currentDepth > maxDepth) return null;
+  if (!startDir || !fs.existsSync(startDir)) return null;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(startDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const fullPath = path.join(startDir, entry.name);
+
+    if (entry.name.toLowerCase() === folderName.toLowerCase()) {
+      return fullPath;
+    }
+
+    const nested = findFolderRecursive(fullPath, folderName, maxDepth, currentDepth + 1);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+function openTerminalAt(targetPath) {
+  const platform = process.platform;
+
+  if (platform === "win32") {
+    spawn("cmd.exe", ["/c", "start", "cmd.exe", "/k", `cd /d "${targetPath}"`], {
+      detached: true,
+      stdio: "ignore",
+    }).unref();
+    return;
+  }
+
+  if (platform === "darwin") {
+    spawn("open", ["-a", "Terminal", targetPath], {
+      detached: true,
+      stdio: "ignore",
+    }).unref();
+    return;
+  }
+
+  spawn("x-terminal-emulator", ["--working-directory", targetPath], {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
+}
+
 app.post("/update-code", (req, res) => {
-  const { filePath, code, userId } = req.body; // Riceve anche l'ID
+  const { filePath, code, userId } = req.body;
 
   const payload = {
-    fileName: require("path").basename(filePath),
+    fileName: path.basename(filePath),
     fullPath: filePath,
     code,
   };
 
   if (userId) {
-    // Invia il file solo alla "stanza" dell'utente specifico
     io.to(userId).emit("code-update", payload);
   } else {
     io.emit("code-update", payload);
@@ -41,7 +95,46 @@ app.post("/update-code", (req, res) => {
 
 io.on("connection", (socket) => {
   socket.on("join-room", (userId) => {
-    socket.join(userId); // Il browser entra nella sua stanza privata
+    socket.join(userId);
+  });
+
+  socket.on("open-terminal", (payload = {}) => {
+    try {
+      const folderName = payload.targetFolderName || "live_notes";
+
+      const searchRoots = [
+        process.cwd(),
+        path.join(process.cwd(), ".."),
+        process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Desktop") : null,
+        process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Documents") : null,
+        process.env.HOME ? path.join(process.env.HOME, "Desktop") : null,
+        process.env.HOME ? path.join(process.env.HOME, "Documents") : null,
+      ].filter(Boolean);
+
+      let foundPath = null;
+
+      for (const root of searchRoots) {
+        foundPath = findFolderRecursive(root, folderName, 6);
+        if (foundPath) break;
+      }
+
+      if (!foundPath) {
+        socket.emit("terminal-error", {
+          message: `Cartella "${folderName}" non trovata`,
+        });
+        return;
+      }
+
+      openTerminalAt(foundPath);
+
+      socket.emit("terminal-opened", {
+        path: foundPath,
+      });
+    } catch (error) {
+      socket.emit("terminal-error", {
+        message: error?.message || "Errore apertura terminale",
+      });
+    }
   });
 });
 
